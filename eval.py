@@ -88,9 +88,13 @@ def evaluate_dataset(model, dataloader, device, model_cfg, save_vis=0, out_folde
 
             out_example_gt = os.path.join(out_folder, "{}_".format(d_idx) + example_id + "_gt")
             out_example = os.path.join(out_folder, "{}_".format(d_idx) + example_id)
+            depth_example = os.path.join(out_folder, "{}_".format(d_idx) + example_id + "_depth")
+            recon_example = os.path.join(out_folder, "{}_".format(d_idx) + example_id + "_recon")
 
             os.makedirs(out_example_gt, exist_ok=True)
             os.makedirs(out_example, exist_ok=True)
+            os.makedirs(depth_example, exist_ok=True)
+            os.makedirs(recon_example, exist_ok=True)
 
         # batch has length 1, the first image is conditioning
         reconstruction = model(input_images,
@@ -103,18 +107,22 @@ def evaluate_dataset(model, dataloader, device, model_cfg, save_vis=0, out_folde
                 focals_pixels_render = data["focals_pixels"][0, r_idx]
             else:
                 focals_pixels_render = None
-            image = render_predicted({k: v[0].contiguous() for k, v in reconstruction.items()},
+            render_res = render_predicted({k: v[0].contiguous() for k, v in reconstruction.items()},
                                      data["world_view_transforms"][0, r_idx],
                                      data["full_proj_transforms"][0, r_idx], 
                                      data["camera_centers"][0, r_idx],
                                      background,
                                      model_cfg,
-                                     focals_pixels=focals_pixels_render)["render"]
+                                     focals_pixels=focals_pixels_render)
+            image = render_res["render"]
+            depth = render_res["depth"]
 
             if d_idx < save_vis:
                 # vis_image_preds(reconstruction, out_example)
                 torchvision.utils.save_image(image, os.path.join(out_example, '{0:05d}'.format(r_idx) + ".png"))
                 torchvision.utils.save_image(data["gt_images"][0, r_idx, ...], os.path.join(out_example_gt, '{0:05d}'.format(r_idx) + ".png"))
+                torchvision.utils.save_image(depth, os.path.join(depth_example, '{0:05d}'.format(r_idx) + ".png"))
+                torch.save(reconstruction, os.path.join(recon_example, '{0:05d}'.format(r_idx) + ".pth"))
 
             # exclude non-foreground images from metric computation
             if not torch.all(data["gt_images"][0, r_idx, ...] == 0):
@@ -225,16 +233,18 @@ def eval_robustness(model, dataloader, device, model_cfg, out_folder=None):
                 focals_pixels_render = data["focals_pixels"][0, r_idx]
             else:
                 focals_pixels_render = None
-            image = render_predicted({k: v[0].contiguous() for k, v in reconstruction.items()},
+            render_res = render_predicted({k: v[0].contiguous() for k, v in reconstruction.items()},
                                         data["world_view_transforms"][0, r_idx],
                                         data["full_proj_transforms"][0, r_idx], 
                                         data["camera_centers"][0, r_idx],
                                         background,
                                         model_cfg,
-                                        focals_pixels=focals_pixels_render)["render"]
+                                        focals_pixels=focals_pixels_render)
+            image = render_res["render"]
 
             torchvision.utils.save_image(image, os.path.join(out_example, '{0:05d}'.format(r_idx) + ".png"))
             torchvision.utils.save_image(data["gt_images"][0, r_idx, ...], os.path.join(out_example_gt, '{0:05d}'.format(r_idx) + ".png"))
+            torchvision.utils.save_image()
 
 @torch.no_grad()
 def main(dataset_name, experiment_path, device_idx, split='test', save_vis=0, out_folder=None):
